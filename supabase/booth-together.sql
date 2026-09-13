@@ -56,6 +56,7 @@ create table if not exists public.room_photos (
   foreign key(room_id, participant_id) references public.room_participants(room_id,participant_id) on delete cascade
 );
 create index if not exists rooms_expiry_idx on public.rooms(expires_at);
+create index if not exists rooms_result_id_idx on public.rooms(result_id);
 create index if not exists room_participants_room_idx on public.room_participants(room_id,last_seen_at);
 create index if not exists room_photos_room_idx on public.room_photos(room_id,round);
 alter table public.rooms enable row level security;
@@ -72,7 +73,7 @@ values ('room-photos','room-photos',false,10485760,array['image/png','image/jpeg
 on conflict(id) do update set public=false,file_size_limit=10485760,allowed_mime_types=array['image/png','image/jpeg'];
 
 create or replace function public.booth_room_snapshot(p_room uuid) returns jsonb
-language sql stable security definer set search_path = public,pg_temp as $$
+language sql stable security definer set search_path = '' as $$
   select jsonb_build_object(
     'room', to_jsonb(r) - 'invite_token_hash',
     'participants', coalesce((select jsonb_agg(to_jsonb(p) - 'token_hash' - 'host_token_hash' order by p.joined_at,p.participant_id)
@@ -83,7 +84,7 @@ language sql stable security definer set search_path = public,pg_temp as $$
 $$;
 
 create or replace function public.booth_room_create(p_code text,p_actor uuid,p_token_hash text,p_host_hash text,p_invite_hash text,p_data jsonb)
-returns jsonb language plpgsql security definer set search_path = public,pg_temp as $$
+returns jsonb language plpgsql security definer set search_path = '' as $$
 declare v_room uuid;
 begin
   insert into public.rooms(room_code,host_participant_id,invite_token_hash,photo_count,layout,frame,max_participants,countdown_seconds,auto_continue)
@@ -98,7 +99,7 @@ $$;
 -- ALL mutations lock the same room row, including capacity, approvals and host transfer.
 -- The functions are executable ONLY by the server service role.
 create or replace function public.booth_room_command(p_code text,p_actor uuid,p_token_hash text,p_host_hash text,p_action text,p_data jsonb default '{}')
-returns jsonb language plpgsql security definer set search_path = public,pg_temp as $$
+returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   r public.rooms%rowtype;
   actor public.room_participants%rowtype;
@@ -147,6 +148,9 @@ begin
         when exists(select 1 from public.room_photos ph where ph.room_id=r.id and ph.participant_id=p_actor and ph.round=r.current_round) then 'reviewing'
         when capture_at > now() then 'countdown' else 'uploading' end else status end
       where room_id=r.id and participant_id=p_actor;
+    update public.room_participants set ready=false where room_id=r.id and participant_id=p_actor and not camera_enabled;
+  elsif p_action='disconnect' then
+    update public.room_participants set status='disconnected',ready=false,last_seen_at=now() where room_id=r.id and participant_id=p_actor and status not in ('left','removed');
   elsif p_action='ready' then
     if r.current_round<>0 then raise exception using message='This session has already started.',errcode='P0001'; end if;
     if (p_data->>'ready')::boolean and not (p_data->>'cameraEnabled')::boolean then raise exception using message='Turn on your camera before getting ready.',errcode='P0001'; end if;
@@ -220,6 +224,8 @@ begin
     if exists(select 1 from public.room_participants where room_id=r.id and participant_id=r.host_participant_id and last_seen_at>now()-interval '60 seconds' and status not in ('left','removed')) then
       raise exception using message='The host is still connected. Host recovery is available after 60 seconds.',errcode='P0001'; end if;
     if actor.last_seen_at<now()-interval '35 seconds' or actor.status in ('left','disconnected') then raise exception using message='Reconnect before becoming host.',errcode='P0001'; end if;
+    select participant_id into target from public.room_participants where room_id=r.id and status not in ('left','removed','disconnected') and last_seen_at>now()-interval '35 seconds' order by joined_at,participant_id limit 1;
+    if target is distinct from p_actor then raise exception using message='Waiting for the earliest connected participant to become host.',errcode='P0001'; end if;
     update public.room_participants set is_host=(participant_id=p_actor) where room_id=r.id;
     update public.rooms set host_participant_id=p_actor where id=r.id;
   elsif p_action='end' then
@@ -247,7 +253,7 @@ begin
     if complete_round then
       if r.current_round=r.photo_count then update public.rooms set status='generating',capture_at=null where id=r.id;
       elsif r.auto_continue or p_action='next' then
-        attempt:=gen_random_uuid(); scheduled:=now()+interval '4 seconds';
+        attempt:=gen_random_uuid(); scheduled:=now()+make_interval(secs=>r.countdown_seconds+1);
         update public.rooms set current_round=current_round+1,status='countdown',capture_id=attempt,capture_at=scheduled where id=r.id;
         update public.room_participants set status='countdown',capture_id=attempt,capture_at=scheduled where room_id=r.id and participant_id=any(r.roster);
       else update public.rooms set status='round_complete' where id=r.id;

@@ -3,6 +3,12 @@ test("desktop capture, edit, retake, export, and honest cloud error", async ({
   page,
 }) => {
   const errors = [];
+  await page.route("**/api/photobooths**", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: "Cloud storage is not configured." },
+    }),
+  );
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(
@@ -51,6 +57,12 @@ test("mobile layout search, favorites, customization, navigation and no overflow
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/photobooths**", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: "Cloud storage is not configured." },
+    }),
+  );
   await page.goto("/");
   expect(
     await page.evaluate(

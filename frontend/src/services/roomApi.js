@@ -1,6 +1,6 @@
 import { participantId, normalizeRoomCode, saveRoomSession } from "../utils/roomSession";
 
-export const roomApiBase = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+export const roomApiBase = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
 const roomPath = (code) => `/api/rooms/${encodeURIComponent(normalizeRoomCode(code))}`;
 
 export function roomHeaders(credentials = {}) {
@@ -22,11 +22,39 @@ async function checked(response) {
   return response;
 }
 
-async function request(path, { credentials, ...options } = {}) {
-  const response = await checked(await fetch(roomApiBase + path, {
-    ...options, headers: { ...roomHeaders(credentials), ...options.headers },
-  }));
-  return response.status === 204 ? null : response.json();
+async function request(path, { credentials, signal, timeoutMs = 65000, ...options } = {}) {
+  const controller = new AbortController();
+  const cancel = () => controller.abort(signal.reason);
+  if (signal?.aborted) cancel();
+  else signal?.addEventListener("abort", cancel, { once: true });
+  let timedOut = false;
+  // Allow a sleeping room server time to wake up, while always releasing the form.
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  try {
+    const response = await checked(await fetch(roomApiBase + path, {
+      ...options,
+      signal: controller.signal,
+      headers: { ...roomHeaders(credentials), ...options.headers },
+    }));
+    if (response.status === 204) return null;
+    try {
+      return await response.json();
+    } catch (error) {
+      if (controller.signal.aborted) throw error;
+      throw new Error("The room server returned an unexpected response. Please ask the site owner to check the backend connection.");
+    }
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    if (timedOut) throw new Error("The room server took too long to respond. It may still be waking up. Please try again.");
+    if (error instanceof TypeError) throw new Error("We couldn't reach the room server. Check your connection and try again.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", cancel);
+  }
 }
 const json = (body) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
@@ -50,7 +78,7 @@ export const roomApi = {
   },
   getInfo: (code, invite) => request(`${roomPath(code)}/info${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`),
   getSnapshot: (code, credentials, signal) => request(roomPath(code), { credentials, signal }),
-  time: (signal) => request("/api/time", { signal, cache: "no-store" }),
+  time: (signal) => request("/api/time", { signal, cache: "no-store", timeoutMs: 10000 }),
   action: (code, credentials, action, payload = {}) => request(`${roomPath(code)}/actions`, { ...json({ ...payload, action }), credentials }),
   signal: (code, credentials, type, toParticipantId, payload = {}) => request(`${roomPath(code)}/signals`, { ...json({ type, toParticipantId, payload }), credentials }),
   uploadPhoto(code, credentials, blob, { round, captureId, capturedAt }) {
@@ -59,13 +87,13 @@ export const roomApi = {
     form.append("round", String(round));
     form.append("captureId", captureId);
     form.append("capturedAt", capturedAt);
-    return request(`${roomPath(code)}/photos`, { method: "POST", credentials, body: form });
+    return request(`${roomPath(code)}/photos`, { method: "POST", credentials, body: form, timeoutMs: 120000 });
   },
   saveResult(code, credentials, blob, { sessionId }) {
     const form = new FormData();
     form.append("image", blob, `pitik-together.${blob.type === "image/png" ? "png" : "jpg"}`);
     form.append("sessionId", sessionId);
-    return request(`${roomPath(code)}/result`, { method: "POST", credentials, body: form });
+    return request(`${roomPath(code)}/result`, { method: "POST", credentials, body: form, timeoutMs: 120000 });
   },
   async getPhotoBlob(photo, credentials, signal) {
     const value = typeof photo === "string" ? photo : photo.image_url;

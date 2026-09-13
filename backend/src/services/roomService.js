@@ -51,7 +51,7 @@ export function readCredentials(req) {
 export function databaseError(error) {
   const status = { P0001: 409, P0002: 404, P0003: 403, P0010: 410 }[error.code];
   if (status) return fail(status, error.message);
-  if (["PGRST202", "42P01"].includes(error.code)) return fail(503, "Booth Together needs its database migration. Please ask the site owner to finish setup.");
+  if (["PGRST202", "PGRST205", "42P01", "42883"].includes(error.code)) return fail(503, "Booth Together needs its database migration. Please ask the site owner to finish setup.");
   return error;
 }
 export async function command(code, credentials, action, data = {}) {

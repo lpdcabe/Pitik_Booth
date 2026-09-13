@@ -42,11 +42,11 @@ export async function openRoomEvents(req, res) {
   streams.get(key)?.close();
   const client = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, authOptions);
   const channel = client.channel(topic(roomId), { config: { private: true, broadcast: { self: false }, presence: { key: credentials.participantId } } });
-  let closed = false, keepalive, expiryTimer, subscribed = false;
+  let closed = false, keepalive, expiryTimer, connectionTimer, subscribed = false;
   const close = () => {
     if (closed) return;
     closed = true;
-    clearInterval(keepalive); clearTimeout(expiryTimer);
+    clearInterval(keepalive); clearTimeout(expiryTimer); clearTimeout(connectionTimer);
     if (streams.get(key)?.channel === channel) streams.delete(key);
     void client.removeAllChannels().finally(() => client.realtime.disconnect());
     if (!res.writableEnded) res.end();
@@ -69,13 +69,13 @@ export async function openRoomEvents(req, res) {
     if (payload?.fromParticipantId !== credentials.participantId && (!payload?.toParticipantId || payload.toParticipantId === credentials.participantId)) write(res, { type: "signal", signal: payload });
   });
   channel.on("presence", { event: "sync" }, () => write(res, { type: "presence", participants: Object.values(channel.presenceState()).flat() }));
-  req.on("close", close);
+  res.on("close", close);
   res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
   res.flushHeaders();
   streams.set(key, { roomId, channel, track, close });
   keepalive = setInterval(() => { if (!closed) res.write(": keepalive\n\n"); }, 20000);
   expiryTimer = setTimeout(() => { write(res, { type: "error", error: "This room has expired." }); close(); }, Math.max(1, new Date(req.roomSnapshot.room.expires_at).getTime() - Date.now()));
-  const connectionTimer = setTimeout(() => { if (!subscribed) { write(res, { type: "error", error: "Live room connection timed out. Reconnecting…" }); close(); } }, 15000);
+  connectionTimer = setTimeout(() => { if (!subscribed) { write(res, { type: "error", message: "Live room connection timed out. Reconnecting…" }); close(); } }, 15000);
   channel.subscribe(async (status) => {
     if (closed) return;
     if (status === "SUBSCRIBED") {
