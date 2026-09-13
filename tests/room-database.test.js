@@ -187,10 +187,6 @@ test("joining enforces capacity and invite validity; identities and host control
     /session is invalid/,
   );
   await assert.rejects(
-    command(room, guest, "configure", settings),
-    /Only the current host/,
-  );
-  await assert.rejects(
     command(room, { ...room.host, host: null }, "end"),
     /Only the current host/,
   );
@@ -208,11 +204,13 @@ test("joining enforces capacity and invite validity; identities and host control
     /Everyone needs a camera/,
   );
   await ready(room, guest);
-  const configured = await command(room, room.host, "configure", {
+  const configured = await command(room, guest, "configure", {
     ...settings,
     photoCount: 3,
+    frame: "classic-black",
   });
   assert.equal(configured.room.photo_count, 3);
+  assert.equal(configured.room.frame, "classic-black");
   assert.ok(configured.participants.every((p) => !p.ready));
   await start(room, guest);
   await assert.rejects(join(room), /already started/);

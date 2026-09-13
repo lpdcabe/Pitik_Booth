@@ -146,7 +146,8 @@ for (const width of [320, 768, 1440]) {
       room: {
         id: "e9a434dd-88da-41da-aef2-678f64724120",
         room_code: "TST123",
-        host_participant_id: participantId,
+        host_participant_id:
+          width === 768 ? participants[1].participant_id : participantId,
         status: "lobby",
         max_participants: participantTotal,
         photo_count: 9,
@@ -194,10 +195,18 @@ for (const width of [320, 768, 1440]) {
       });
     expect(sharedFrame).toBe(true);
     await fits(page, "live room");
-    await page.getByRole("button", { name: "Change layout & frame" }).click();
+    await page.getByRole("button", { name: "Choose our shared setup" }).click();
     await expect(
       page.getByLabel(`Layout for ${participantTotal} people`),
     ).toBeVisible();
+    if (width === 768) {
+      await expect(
+        page.getByText("Anyone in the room can update these shared settings"),
+      ).toBeVisible();
+      await expect(page.getByRole("button", { name: "End room" })).toHaveCount(
+        0,
+      );
+    }
     await fits(page, "room settings");
     await page.screenshot({
       path: `test-results/room-${width}.png`,

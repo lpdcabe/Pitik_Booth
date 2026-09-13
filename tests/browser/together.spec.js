@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("room design, compatible dropdowns and creation invitation", async ({
+test("room creation collects the people first and preserves shared defaults", async ({
   page,
 }) => {
   const errors = [];
@@ -39,37 +39,10 @@ test("room design, compatible dropdowns and creation invitation", async ({
   ).toBeDisabled();
   await page.getByLabel("Your display name").fill("Pitik test");
   await page.getByLabel("Maximum participants").selectOption("3");
-  await expect(page.getByLabel("Layout for 3 people")).toHaveValue(
-    "remote-trio-grid",
-  );
-  await expect(
-    page.getByRole("button", { name: "Choose Duo Grid", exact: true }),
-  ).toHaveCount(0);
-  await page.getByLabel("Maximum participants").selectOption("4");
-  await expect(page.getByLabel("Layout for 4 people")).toHaveValue(
-    "remote-2x2-squad",
-  );
-  await page.getByLabel("Maximum participants").selectOption("2");
-  await page.getByRole("button", { name: "Pink", exact: true }).click();
+  await expect(page.getByLabel("Layout for 3 people")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Pink", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await page
-    .getByRole("button", { name: "Choose Alternating Strip", exact: true })
-    .click();
-  await expect(page.getByLabel("Layout for 2 people")).toHaveValue(
-    "remote-alternating-strip",
-  );
-  await page.getByLabel("Photos per person").selectOption("6");
-  await page.getByLabel("Countdown").selectOption("5");
-  await page.getByLabel("Automatically start the next photo").check();
-  expect(
-    await page
-      .locator(".remote-template-grid img")
-      .evaluateAll((images) =>
-        images.every((img) => img.getBoundingClientRect().height <= 80),
-      ),
-  ).toBe(true);
+  ).toHaveCount(0);
   await page.screenshot({
     path: "test-results/create-room-desktop.png",
     fullPage: true,
@@ -81,12 +54,12 @@ test("room design, compatible dropdowns and creation invitation", async ({
   await expect(page.getByLabel("Invite link")).toHaveValue(/TST123/);
   expect(submitted).toMatchObject({
     displayName: "Pitik test",
-    maxParticipants: 2,
-    photoCount: 6,
-    countdownSeconds: 5,
-    autoContinue: true,
-    layout: "remote-alternating-strip",
-    frame: "pink",
+    maxParticipants: 3,
+    photoCount: 4,
+    countdownSeconds: 3,
+    autoContinue: false,
+    layout: "remote-trio-grid",
+    frame: "classic-white",
   });
   expect(
     await page.evaluate(

@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Copy, QrCode, ArrowRight, ArrowLeft } from "lucide-react";
 import { roomApi } from "../services/roomApi";
 import { getParticipantId, getDisplayName } from "../utils/roomSession";
-import RoomSettings from "../components/remote/RoomSettings";
+import { getRemoteTemplates } from "../utils/remoteLayouts";
 import QRCodeModal from "../components/QRCodeModal";
 import { useBooth } from "../context/PhotoboothContext";
 export default function CreateRoom() {
@@ -52,7 +52,7 @@ export default function CreateRoom() {
         <p>
           {created
             ? "Send the invitation, then step inside."
-            : "Choose your frame and invite up to three friends."}
+            : "Create the room, invite your friends, then choose the shared look together."}
         </p>
       </div>
       {created ? (
@@ -114,12 +114,31 @@ export default function CreateRoom() {
               disabled={busy}
             />
           </label>
-          <RoomSettings
-            value={settings}
-            onChange={setSettings}
-            create
-            disabled={busy}
-          />
+          <label>
+            Maximum participants
+            <select
+              value={settings.maxParticipants}
+              disabled={busy}
+              onChange={(e) => {
+                const maxParticipants = Number(e.target.value);
+                setSettings({
+                  ...settings,
+                  maxParticipants,
+                  layout: getRemoteTemplates(maxParticipants)[0].id,
+                });
+              }}
+            >
+              {[2, 3, 4].map((number) => (
+                <option key={number} value={number}>
+                  {number} people
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="help-text">
+            Everyone can choose the frame, layout, photo count, and countdown
+            together inside the room.
+          </p>
           {error && (
             <p className="room-error" role="alert">
               {error}

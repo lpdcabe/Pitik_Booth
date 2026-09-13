@@ -136,7 +136,7 @@ begin
   if p_action='snapshot' then return public.booth_room_snapshot(r.id); end if;
   if r.status='ended' and p_action not in ('leave') then raise exception using message='The host ended this room.',errcode='P0010'; end if;
   if actor.status='left' and p_action not in ('heartbeat','leave') then raise exception using message='Reconnect before using room controls.',errcode='P0003'; end if;
-  host_action := p_action in ('configure','start','next','remove','end','retry-generation','store-result') or (p_action='retake' and coalesce(p_data->>'all','false')='true');
+  host_action := p_action in ('start','next','remove','end','retry-generation','store-result') or (p_action='retake' and coalesce(p_data->>'all','false')='true');
   if host_action and (r.host_participant_id<>p_actor or p_host_hash is null or p_host_hash<>actor.host_token_hash) then
     raise exception using message='Only the current host can use this control.',errcode='P0003';
   end if;

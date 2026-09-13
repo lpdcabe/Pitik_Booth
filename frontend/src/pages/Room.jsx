@@ -266,7 +266,7 @@ function LiveRoom({ code }) {
     if (room?.status === "ended") camera.stop();
   }, [room?.result_id, room?.status, navigate, camera.stop]);
   useEffect(() => {
-    if (!settingsOpen && room)
+    if (room)
       setSettings({
         layout: room.layout,
         frame: room.frame,
@@ -279,9 +279,9 @@ function LiveRoom({ code }) {
     room?.layout,
     room?.frame,
     room?.photo_count,
+    room?.max_participants,
     room?.countdown_seconds,
     room?.auto_continue,
-    settingsOpen,
   ]);
   useEffect(() => {
     if (!canClaim || !connected || isHost) return;
@@ -671,15 +671,7 @@ function LiveRoom({ code }) {
                 <button
                   className="button"
                   disabled={!canStart || busy}
-                  onClick={async () => {
-                    if (room.layout !== layout.id) {
-                      const result = await command("configure", {
-                        layout: layout.id,
-                      });
-                      if (!result) return;
-                    }
-                    await command("start");
-                  }}
+                  onClick={() => command("start")}
                 >
                   Start Booth <ArrowRight size={16} />
                 </button>
@@ -884,12 +876,12 @@ function LiveRoom({ code }) {
               </button>
             </p>
           )}
-          {isHost && lobby && (
+          {lobby && (
             <button
               className="button secondary"
               onClick={() => setSettingsOpen((v) => !v)}
             >
-              {settingsOpen ? "Close settings" : "Change layout & frame"}
+              {settingsOpen ? "Close shared setup" : "Choose our shared setup"}
             </button>
           )}
           {isHost && (
@@ -903,9 +895,13 @@ function LiveRoom({ code }) {
           <small>Audio off. Live video is never recorded.</small>
         </aside>
       </div>
-      {settingsOpen && isHost && lobby && settings && (
+      {settingsOpen && lobby && settings && (
         <section className="room-configuration">
-          <h2>A frame for your people.</h2>
+          <h2>Choose it together.</h2>
+          <p className="room-settings-hint">
+            Anyone in the room can update these shared settings before the booth
+            starts.
+          </p>
           <RoomSettings
             value={settings}
             onChange={setSettings}
@@ -925,7 +921,7 @@ function LiveRoom({ code }) {
             Save room settings
           </button>
           <p className="help-text">
-            Everyone will need to confirm they’re ready after a change.
+            Saving a change asks everyone to confirm they’re ready again.
           </p>
         </section>
       )}
