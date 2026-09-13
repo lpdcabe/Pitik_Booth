@@ -197,6 +197,21 @@
   flex-shrink: 0;
   margin-top: 3px;
 }
+.room-settings-title {
+  font-size: 25px;
+  margin: 30px 0 7px;
+}
+.room-settings-hint {
+  color: #818976;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.room-frame-grid {
+  margin: 18px 0 30px;
+}
+.room-frame-grid button {
+  background: transparent;
+}
 .together-choice,
 .room-heading h1,
 .room-notice,

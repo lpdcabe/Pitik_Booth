@@ -1,5 +1,5 @@
-import { frames } from "../../utils/frames";
 import { getRemoteTemplates } from "../../utils/remoteLayouts";
+import FramePicker from "../FramePicker";
 export default function RoomSettings({
   value,
   onChange,
@@ -60,20 +60,16 @@ export default function RoomSettings({
             ))}
           </select>
         </label>
-        <label>
-          Frame
-          <select
-            value={value.frame}
-            onChange={(e) => change("frame", e.target.value)}
-          >
-            {frames.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
+      <h2 className="room-settings-title">Find your feeling</h2>
+      <p className="room-settings-hint">
+        Choose the frame color that fits your shared moment.
+      </p>
+      <FramePicker
+        value={value.frame}
+        onChange={(frame) => change("frame", frame.id)}
+        className="room-frame-grid"
+      />
       <label>
         Layout for {count} people
         <select

@@ -4,8 +4,8 @@ import { ArrowLeft, ArrowRight, Upload } from "lucide-react";
 import { Steps } from "../components/Chrome";
 import LayoutSelector from "../components/LayoutSelector";
 import LayoutPreview from "../components/LayoutPreview";
+import FramePicker from "../components/FramePicker";
 import { useBooth } from "../context/PhotoboothContext";
-import { frames } from "../utils/frames";
 import { filters } from "../utils/filters";
 export default function Setup({ library = false }) {
   const [params] = useSearchParams();
@@ -72,29 +72,7 @@ export default function Setup({ library = false }) {
               <ArrowLeft size={16} /> Back to layouts
             </button>
             <h2>Find your feeling</h2>
-            <div className="frame-grid">
-              {frames.map((f) => (
-                <button
-                  className={f.id === frame.id ? "selected" : ""}
-                  key={f.id}
-                  aria-label={f.name}
-                  onClick={() => setFrame(f)}
-                >
-                  <span
-                    style={{
-                      background: f.backgroundColor,
-                      color: f.textColor,
-                    }}
-                  >
-                    a little
-                    <br />
-                    <em>moment</em>
-                    {f.decoration && <i>✧</i>}
-                  </span>
-                  {f.name}
-                </button>
-              ))}
-            </div>
+            <FramePicker value={frame} onChange={setFrame} />
             <h2>A few words to remember</h2>
             <label>
               Event name

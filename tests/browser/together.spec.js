@@ -50,6 +50,10 @@ test("room design, compatible dropdowns and creation invitation", async ({
     "remote-2x2-squad",
   );
   await page.getByLabel("Maximum participants").selectOption("2");
+  await page.getByRole("button", { name: "Pink", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Pink", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await page
     .getByRole("button", { name: "Choose Alternating Strip", exact: true })
     .click();
@@ -82,6 +86,7 @@ test("room design, compatible dropdowns and creation invitation", async ({
     countdownSeconds: 5,
     autoContinue: true,
     layout: "remote-alternating-strip",
+    frame: "pink",
   });
   expect(
     await page.evaluate(
