@@ -8,7 +8,9 @@ import { existsSync } from "node:fs";
 import routes from "./routes/photobooths.js";
 import { supabase } from "./services/supabase.js";
 import roomRoutes from './routes/rooms.js';
+import { getFrontendOrigin } from "./config.js";
 export const app = express();
+const frontendOrigin = getFrontendOrigin();
 // Render terminates HTTPS at its reverse proxy; trust only the closest hop.
 if (process.env.RENDER === "true") app.set("trust proxy", 1);
 app.disable("x-powered-by");
@@ -21,7 +23,7 @@ app.use(
         "script-src": ["'self'"],
         "connect-src": [
           "'self'",
-          process.env.FRONTEND_URL || "http://localhost:5173",
+          frontendOrigin,
         ],
         "style-src": ["'self'", "'unsafe-inline'"],
       },
@@ -30,7 +32,7 @@ app.use(
 );
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: frontendOrigin,
     allowedHeaders: ["Content-Type", "X-Session-Id", "Authorization", "X-Participant-Id", "X-Host-Token"],
   }),
 );

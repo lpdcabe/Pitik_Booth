@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 process.env.NODE_ENV = "test";
 delete process.env.SUPABASE_URL;
 delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+process.env.FRONTEND_URL = "http://localhost:5173/";
 const { app } = await import("../backend/src/server.js");
 test("API health, unavailable cloud storage, CORS and safe errors", async () => {
   const server = app.listen(0, "127.0.0.1");

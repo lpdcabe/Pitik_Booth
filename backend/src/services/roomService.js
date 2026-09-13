@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import { z } from "zod";
 import { supabase } from "./supabase.js";
+import { getFrontendOrigin } from "../config.js";
 
 export const roomBucket = "room-photos";
 export const hashToken = (token) => createHash("sha256").update(token).digest("hex");
@@ -80,7 +81,7 @@ export async function createRoom(data) {
   throw fail(503, "Could not create a unique room. Please try again.");
 }
 export function inviteUrl(code, token) {
-  const url = new URL(`/room/${code}`, process.env.FRONTEND_URL || "http://localhost:5173");
+  const url = new URL(`/room/${code}`, getFrontendOrigin());
   if (token) url.searchParams.set("invite", token);
   return url.toString();
 }

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { supabase, bucket } from "../services/supabase.js";
 import { metadata, uuid } from "../validation.js";
+import { getFrontendOrigin } from "../config.js";
 const fields =
   "id,event_name,custom_text,layout,frame,photo_count,created_at,expires_at";
 const alive = (q) =>
@@ -58,7 +59,7 @@ export async function create(req, res) {
   res.status(201).json({
     ...data,
     image_url: `/api/photobooths/${id}/image`,
-    share_url: `${process.env.FRONTEND_URL || "http://localhost:5173"}/photo/${id}`,
+    share_url: `${getFrontendOrigin()}/photo/${id}`,
   });
 }
 export async function get(req, res) {
