@@ -104,7 +104,10 @@ for (const [width, height] of [
 }
 
 for (const width of [320, 768, 1440]) {
-  test(`live room and settings adapt at ${width}px with four participants`, async ({
+  const participantTotal = width === 1440 ? 2 : 4;
+  const layoutId =
+    participantTotal === 2 ? "remote-duo-grid" : "remote-2x2-squad";
+  test(`live room and settings adapt at ${width}px with ${participantTotal} participants`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -123,29 +126,34 @@ for (const width of [320, 768, 1440]) {
         ),
       credentials,
     );
-    const participants = Array.from({ length: 4 }, (_, index) => ({
-      participant_id: index
-        ? `e9a434dd-88da-41da-aef2-678f6472412${index + 3}`
-        : participantId,
-      display_name: index ? "A friend with a long display name" : "Pitik test",
-      status: "not_ready",
-      camera_enabled: false,
-      ready: false,
-      joined_at: new Date().toISOString(),
-      last_seen_at: new Date().toISOString(),
-    }));
+    const participants = Array.from(
+      { length: participantTotal },
+      (_, index) => ({
+        participant_id: index
+          ? `e9a434dd-88da-41da-aef2-678f6472412${index + 3}`
+          : participantId,
+        display_name: index
+          ? "A friend with a long display name"
+          : "Pitik test",
+        status: "not_ready",
+        camera_enabled: false,
+        ready: false,
+        joined_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
+      }),
+    );
     const snapshot = {
       room: {
         id: "e9a434dd-88da-41da-aef2-678f64724120",
         room_code: "TST123",
         host_participant_id: participantId,
         status: "lobby",
-        max_participants: 4,
+        max_participants: participantTotal,
         photo_count: 9,
         current_round: 0,
         countdown_seconds: 3,
         auto_continue: false,
-        layout: "remote-2x2-squad",
+        layout: layoutId,
         frame: "classic-white",
         roster: [],
         version: 1,
@@ -162,10 +170,34 @@ for (const width of [320, 768, 1440]) {
     await expect(
       page.getByRole("heading", { name: "Your people. In the moment." }),
     ).toBeVisible();
-    await expect(page.locator(".participant-video")).toHaveCount(4);
+    await expect(page.locator(".participant-video")).toHaveCount(
+      participantTotal,
+    );
+    await expect(page.locator(".live-layout-shell")).toHaveAttribute(
+      "data-layout",
+      layoutId,
+    );
+    const sharedFrame = await page
+      .locator(".participant-video")
+      .evaluateAll((videos) => {
+        const shell = videos[0]?.closest(".live-layout-shell");
+        const bounds = shell?.getBoundingClientRect();
+        return (
+          !!shell &&
+          videos.every(
+            (video) =>
+              video.closest(".live-layout-shell") === shell &&
+              video.getBoundingClientRect().left >= bounds.left &&
+              video.getBoundingClientRect().right <= bounds.right,
+          )
+        );
+      });
+    expect(sharedFrame).toBe(true);
     await fits(page, "live room");
     await page.getByRole("button", { name: "Change layout & frame" }).click();
-    await expect(page.getByLabel("Layout for 4 people")).toBeVisible();
+    await expect(
+      page.getByLabel(`Layout for ${participantTotal} people`),
+    ).toBeVisible();
     await fits(page, "room settings");
     await page.screenshot({
       path: `test-results/room-${width}.png`,
@@ -192,15 +224,13 @@ for (const width of [320, 768]) {
       page.getByRole("button", { name: "Start session", exact: true }),
     ).toBeVisible();
     await fits(page, "solo camera");
-    await page
-      .locator("input[type=file]")
-      .setInputFiles(
-        Array.from({ length: width === 320 ? 9 : 1 }, (_, index) => ({
-          name: `test-${index}.png`,
-          mimeType: "image/png",
-          buffer: image,
-        })),
-      );
+    await page.locator("input[type=file]").setInputFiles(
+      Array.from({ length: width === 320 ? 9 : 1 }, (_, index) => ({
+        name: `test-${index}.png`,
+        mimeType: "image/png",
+        buffer: image,
+      })),
+    );
     await expect(page).toHaveURL(/\/edit$/);
     await fits(page, "editor");
     await page.getByRole("button", { name: "Create my photobooth" }).click();

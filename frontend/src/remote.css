@@ -293,6 +293,73 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+.live-layout-shell {
+  width: 100%;
+  padding: clamp(14px, 2.5vw, 28px);
+  border: 2px solid;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px #34452e17;
+}
+.live-layout-label,
+.live-layout-footer {
+  display: block;
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 1.7px;
+  text-transform: uppercase;
+}
+.live-layout-label {
+  margin-bottom: 15px;
+}
+.live-layout-footer {
+  margin-top: 14px;
+  letter-spacing: 1px;
+  opacity: 0.75;
+}
+.live-layout-canvas {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: var(--live-layout-ratio);
+  min-height: 250px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #ffffff24;
+}
+.live-layout-canvas .live-layout-slot {
+  position: absolute;
+  min-width: 0;
+  max-height: none;
+  aspect-ratio: auto;
+  border-radius: 3px;
+  transform-origin: center;
+}
+.live-layout-canvas .slot-rounded {
+  border-radius: clamp(15px, 4vw, 42px);
+}
+.live-layout-canvas .slot-arch {
+  border-radius: 48% 48% 8px 8px;
+}
+.live-layout-canvas .slot-polaroid {
+  box-shadow: 0 0 0 clamp(3px, 0.8vw, 9px) #fffdf8;
+}
+.live-empty-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px dashed currentColor;
+  background: #ffffff5c;
+  opacity: 0.65;
+  text-align: center;
+  font-size: 10px;
+}
+.live-layout-canvas.participant-grid.people-3 > :last-child {
+  grid-column: auto;
+  max-height: none;
+}
 .participant-grid.people-1 {
   grid-template-columns: 1fr;
 }
@@ -693,6 +760,9 @@
   }
   .participant-grid {
     gap: 8px;
+  }
+  .live-layout-canvas {
+    min-height: 220px;
   }
   .participant-video {
     aspect-ratio: 3/4;

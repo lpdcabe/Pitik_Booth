@@ -1,102 +1,969 @@
-import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import {Link,useNavigate,useParams} from 'react-router-dom';
-import {Camera,VideoOff,SwitchCamera,Volume2,VolumeX,Copy,QrCode,LogOut,Users,Check,RotateCcw,ArrowRight} from 'lucide-react';
-import {useRoom} from '../hooks/useRoom';
-import useRoomCamera from '../hooks/useRoomCamera';
-import {useWebRTC} from '../hooks/useWebRTC';
-import {useClockSync} from '../hooks/useClockSync';
-import {useSynchronizedCountdown} from '../hooks/useSynchronizedCountdown';
-import {useRealtimePresence} from '../hooks/useRealtimePresence';
-import useRoomPhotos from '../hooks/useRoomPhotos';
-import {getRoomSession} from '../utils/roomSession';
-import {buildRemoteLayout,getRemoteTemplates,getRemotePhotos} from '../utils/remoteLayouts';
-import {generateCanvas,canvasBlob} from '../utils/canvasGenerator';
-import {frames} from '../utils/frames';
-import {sessionId} from '../utils/session';
-import {useBooth} from '../context/PhotoboothContext';
-import LayoutPreview from '../components/LayoutPreview';
-import QRCodeModal from '../components/QRCodeModal';
-import ParticipantGrid from '../components/remote/ParticipantGrid';
-import RemotePhotoReview from '../components/remote/RemotePhotoReview';
-import RoomSettings from '../components/remote/RoomSettings';
-import JoinRoom from './JoinRoom';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+  Camera,
+  VideoOff,
+  SwitchCamera,
+  Volume2,
+  VolumeX,
+  Copy,
+  QrCode,
+  LogOut,
+  Users,
+  Check,
+  RotateCcw,
+  ArrowRight,
+} from "lucide-react";
+import { useRoom } from "../hooks/useRoom";
+import useRoomCamera from "../hooks/useRoomCamera";
+import { useWebRTC } from "../hooks/useWebRTC";
+import { useClockSync } from "../hooks/useClockSync";
+import { useSynchronizedCountdown } from "../hooks/useSynchronizedCountdown";
+import { useRealtimePresence } from "../hooks/useRealtimePresence";
+import useRoomPhotos from "../hooks/useRoomPhotos";
+import { getRoomSession } from "../utils/roomSession";
+import {
+  buildRemoteLayout,
+  getRemoteTemplates,
+  getRemotePhotos,
+} from "../utils/remoteLayouts";
+import { generateCanvas, canvasBlob } from "../utils/canvasGenerator";
+import { frames } from "../utils/frames";
+import { sessionId } from "../utils/session";
+import { useBooth } from "../context/PhotoboothContext";
+import LayoutPreview from "../components/LayoutPreview";
+import QRCodeModal from "../components/QRCodeModal";
+import ParticipantGrid from "../components/remote/ParticipantGrid";
+import RemotePhotoReview from "../components/remote/RemotePhotoReview";
+import RoomSettings from "../components/remote/RoomSettings";
+import JoinRoom from "./JoinRoom";
 
-const liveMember=p=>!['left','removed'].includes(p.status);
-const activeCaptureStates=['countdown','retaking','capturing'];
-function roomLayout(room,participants){const roster=room?.roster?.length?room.roster.map(id=>participants.find(p=>p.participant_id===id)).filter(Boolean):participants.filter(liveMember);const count=roster.length>=2?roster.length:room?.max_participants||2;const people=roster.length>=2?roster:Array.from({length:count},(_,i)=>roster[i]||{participant_id:`placeholder-${i}`,display_name:`Friend ${i+1}`});const templates=getRemoteTemplates(count);const template=templates.find(t=>t.id===room?.layout)||templates[0];return buildRemoteLayout(template.id,people,room?.photo_count||4);}
+const liveMember = (p) => !["left", "removed"].includes(p.status);
+const activeCaptureStates = ["countdown", "retaking", "capturing"];
+function roomLayout(room, participants) {
+  const roster = room?.roster?.length
+    ? room.roster
+        .map((id) => participants.find((p) => p.participant_id === id))
+        .filter(Boolean)
+    : participants.filter(liveMember);
+  const count =
+    roster.length >= 2 ? roster.length : room?.max_participants || 2;
+  const people =
+    roster.length >= 2
+      ? roster
+      : Array.from(
+          { length: count },
+          (_, i) =>
+            roster[i] || {
+              participant_id: `placeholder-${i}`,
+              display_name: `Friend ${i + 1}`,
+            },
+        );
+  const templates = getRemoteTemplates(count);
+  const template = templates.find((t) => t.id === room?.layout) || templates[0];
+  return buildRemoteLayout(template.id, people, room?.photo_count || 4);
+}
 
-export default function Room(){const {roomCode}=useParams();const code=roomCode.toUpperCase();const [entered,setEntered]=useState(()=>!!getRoomSession(code)?.participantToken);useEffect(()=>setEntered(!!getRoomSession(code)?.participantToken),[code]);return entered?<LiveRoom key={code} code={code}/>:<JoinRoom key={code} roomCode={code} onJoined={()=>setEntered(true)}/>;}
+export default function Room() {
+  const { roomCode } = useParams();
+  const code = roomCode.toUpperCase();
+  const [entered, setEntered] = useState(
+    () => !!getRoomSession(code)?.participantToken,
+  );
+  useEffect(() => setEntered(!!getRoomSession(code)?.participantToken), [code]);
+  return entered ? (
+    <LiveRoom key={code} code={code} />
+  ) : (
+    <JoinRoom key={code} roomCode={code} onJoined={() => setEntered(true)} />
+  );
+}
 
-function LiveRoom({code}){
- const connection=useRoom(code),{room,participants,photos,credentials,connected,loading,error,action,uploadPhoto,saveResult,refresh,leave,subscribeSignals,sendSignal}=connection;
- const camera=useRoomCamera(),clock=useClockSync(connected),navigate=useNavigate(),{notify}=useBooth();
- const id=credentials?.participantId,me=participants.find(p=>p.participant_id===id),isHost=room?.host_participant_id===id;
- const [busy,setBusy]=useState(false),[localPhoto,setLocalPhoto]=useState(null),[uploading,setUploading]=useState(false),[uploadError,setUploadError]=useState(''),[flash,setFlash]=useState(false),[sound,setSound]=useState(false),[qr,setQr]=useState(false),[generating,setGenerating]=useState(false),[generationError,setGenerationError]=useState(''),[generationRetry,setGenerationRetry]=useState(0),[settingsOpen,setSettingsOpen]=useState(false),[settings,setSettings]=useState(null),[confirmEnd,setConfirmEnd]=useState(false),[now,setNow]=useState(Date.now());
- const mounted=useRef(true),localRef=useRef(null),generationKey=useRef(null),flashTimer=useRef(null);
- const visible=useMemo(()=>participants.filter(liveMember),[participants]);
- const rtc=useWebRTC({participantId:id,participants:visible,localStream:camera.stream,subscribeSignals,sendSignal,connected});
- const presence=useRealtimePresence({action,connected,cameraEnabled:camera.enabled&&camera.status==='ready',currentState:uploading?'uploading':me?.status||'connected',participants,participantId:id});
- const media=useRoomPhotos(photos,credentials);
- const layout=useMemo(()=>roomLayout(room,participants),[room?.layout,room?.max_participants,room?.photo_count,JSON.stringify(room?.roster),participants.map(p=>`${p.participant_id}:${p.display_name}:${p.status==='left'||p.status==='removed'}`).join('|')]);
- const frame=frames.find(f=>f.id===room?.frame)||frames[0];
- const renderedPhotos=useMemo(()=>getRemotePhotos(layout,media.photos),[layout,media.photos]);
- const finalSettings=useMemo(()=>({eventName:'Pitik Booth · Together',message:layout.slots.filter(s=>s.round===1).map(s=>participants.find(p=>p.participant_id===s.participantId)?.display_name).filter(Boolean).join(' + '),date:new Date(room?.created_at||Date.now()).toISOString().slice(0,10),showDate:true,showMessage:true}),[layout,participants,room?.created_at]);
- const ownPhoto=media.photos.find(p=>p.participant_id===id&&p.round===room?.current_round&&p.capture_id===me?.capture_id);
- const localCurrent=localPhoto?.captureId===me?.capture_id&&localPhoto?.round===room?.current_round?localPhoto:null;
- const host=participants.find(p=>p.participant_id===room?.host_participant_id);
- const hostStale=!!host&&(host.status==='disconnected'||host.online===false||now-Date.parse(host.last_seen_at)>30000);
- const canClaim=!!host&&now-Date.parse(host.last_seen_at)>60000;
- const lobby=room&&['waiting','lobby','ready'].includes(room.status);
- const readyCount=visible.filter(p=>p.ready&&p.camera_enabled&&p.online!==false&&p.status!=='disconnected').length;
- const peersConnected=visible.filter(p=>p.participant_id!==id).every(p=>rtc.peerStates[p.participant_id]?.state==='connected'||rtc.peerStates[p.participant_id]?.state==='completed');
- const canStart=isHost&&lobby&&visible.length>=2&&readyCount===visible.length&&connected&&clock.synced&&peersConnected;
- const ownRoundApproved=ownPhoto?.approved;
- const waitingPeople=(room?.roster||[]).map(pid=>participants.find(p=>p.participant_id===pid)).filter(Boolean).filter(p=>!photos.some(ph=>ph.round===room.current_round&&ph.participant_id===p.participant_id&&ph.approved));
- const captureState=useSynchronizedCountdown({captureAt:me?.capture_at,captureId:me?.capture_id,clockOffset:clock.clockOffset,enabled:connected&&clock.synced&&activeCaptureStates.includes(me?.status)&&!['ended','completed'].includes(room?.status),onCapture:capture});
+function LiveRoom({ code }) {
+  const connection = useRoom(code),
+    {
+      room,
+      participants,
+      photos,
+      credentials,
+      connected,
+      loading,
+      error,
+      action,
+      uploadPhoto,
+      saveResult,
+      refresh,
+      leave,
+      subscribeSignals,
+      sendSignal,
+    } = connection;
+  const camera = useRoomCamera(),
+    clock = useClockSync(connected),
+    navigate = useNavigate(),
+    { notify } = useBooth();
+  const id = credentials?.participantId,
+    me = participants.find((p) => p.participant_id === id),
+    isHost = room?.host_participant_id === id;
+  const [busy, setBusy] = useState(false),
+    [localPhoto, setLocalPhoto] = useState(null),
+    [uploading, setUploading] = useState(false),
+    [uploadError, setUploadError] = useState(""),
+    [flash, setFlash] = useState(false),
+    [sound, setSound] = useState(false),
+    [qr, setQr] = useState(false),
+    [generating, setGenerating] = useState(false),
+    [generationError, setGenerationError] = useState(""),
+    [generationRetry, setGenerationRetry] = useState(0),
+    [settingsOpen, setSettingsOpen] = useState(false),
+    [settings, setSettings] = useState(null),
+    [confirmEnd, setConfirmEnd] = useState(false),
+    [now, setNow] = useState(Date.now());
+  const mounted = useRef(true),
+    localRef = useRef(null),
+    generationKey = useRef(null),
+    flashTimer = useRef(null);
+  const visible = useMemo(
+    () => participants.filter(liveMember),
+    [participants],
+  );
+  const rtc = useWebRTC({
+    participantId: id,
+    participants: visible,
+    localStream: camera.stream,
+    subscribeSignals,
+    sendSignal,
+    connected,
+  });
+  const presence = useRealtimePresence({
+    action,
+    connected,
+    cameraEnabled: camera.enabled && camera.status === "ready",
+    currentState: uploading ? "uploading" : me?.status || "connected",
+    participants,
+    participantId: id,
+  });
+  const media = useRoomPhotos(photos, credentials);
+  const layout = useMemo(
+    () => roomLayout(room, participants),
+    [
+      room?.layout,
+      room?.max_participants,
+      room?.photo_count,
+      JSON.stringify(room?.roster),
+      participants
+        .map(
+          (p) =>
+            `${p.participant_id}:${p.display_name}:${p.status === "left" || p.status === "removed"}`,
+        )
+        .join("|"),
+    ],
+  );
+  const frame = frames.find((f) => f.id === room?.frame) || frames[0];
+  const renderedPhotos = useMemo(
+    () => getRemotePhotos(layout, media.photos),
+    [layout, media.photos],
+  );
+  const finalSettings = useMemo(
+    () => ({
+      eventName: "Pitik Booth · Together",
+      message: layout.slots
+        .filter((s) => s.round === 1)
+        .map(
+          (s) =>
+            participants.find((p) => p.participant_id === s.participantId)
+              ?.display_name,
+        )
+        .filter(Boolean)
+        .join(" + "),
+      date: new Date(room?.created_at || Date.now()).toISOString().slice(0, 10),
+      showDate: true,
+      showMessage: true,
+    }),
+    [layout, participants, room?.created_at],
+  );
+  const ownPhoto = media.photos.find(
+    (p) =>
+      p.participant_id === id &&
+      p.round === room?.current_round &&
+      p.capture_id === me?.capture_id,
+  );
+  const localCurrent =
+    localPhoto?.captureId === me?.capture_id &&
+    localPhoto?.round === room?.current_round
+      ? localPhoto
+      : null;
+  const host = participants.find(
+    (p) => p.participant_id === room?.host_participant_id,
+  );
+  const hostStale =
+    !!host &&
+    (host.status === "disconnected" ||
+      host.online === false ||
+      now - Date.parse(host.last_seen_at) > 30000);
+  const canClaim = !!host && now - Date.parse(host.last_seen_at) > 60000;
+  const lobby = room && ["waiting", "lobby", "ready"].includes(room.status);
+  const readyCount = visible.filter(
+    (p) =>
+      p.ready &&
+      p.camera_enabled &&
+      p.online !== false &&
+      p.status !== "disconnected",
+  ).length;
+  const peersConnected = visible
+    .filter((p) => p.participant_id !== id)
+    .every(
+      (p) =>
+        rtc.peerStates[p.participant_id]?.state === "connected" ||
+        rtc.peerStates[p.participant_id]?.state === "completed",
+    );
+  const canStart =
+    isHost &&
+    lobby &&
+    visible.length >= 2 &&
+    readyCount === visible.length &&
+    connected &&
+    clock.synced &&
+    peersConnected;
+  const ownRoundApproved = ownPhoto?.approved;
+  const waitingPeople = (room?.roster || [])
+    .map((pid) => participants.find((p) => p.participant_id === pid))
+    .filter(Boolean)
+    .filter(
+      (p) =>
+        !photos.some(
+          (ph) =>
+            ph.round === room.current_round &&
+            ph.participant_id === p.participant_id &&
+            ph.approved,
+        ),
+    );
+  const captureState = useSynchronizedCountdown({
+    captureAt: me?.capture_at,
+    captureId: me?.capture_id,
+    clockOffset: clock.clockOffset,
+    enabled:
+      connected &&
+      clock.synced &&
+      activeCaptureStates.includes(me?.status) &&
+      !["ended", "completed"].includes(room?.status),
+    onCapture: capture,
+  });
 
- useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;clearTimeout(flashTimer.current);if(localRef.current?.url)URL.revokeObjectURL(localRef.current.url);};},[]);
- useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);
- useEffect(()=>{if(room?.result_id)navigate(`/photo/${room.result_id}?together=1`,{replace:true});if(room?.status==='ended')camera.stop();},[room?.result_id,room?.status,navigate,camera.stop]);
- useEffect(()=>{if(!settingsOpen&&room)setSettings({layout:room.layout,frame:room.frame,photoCount:room.photo_count,maxParticipants:room.max_participants,countdownSeconds:room.countdown_seconds,autoContinue:room.auto_continue});},[room?.layout,room?.frame,room?.photo_count,room?.countdown_seconds,room?.auto_continue,settingsOpen]);
- useEffect(()=>{if(!canClaim||!connected||isHost)return;const timer=setTimeout(()=>action('claim-host').catch(()=>{}),500);return()=>clearTimeout(timer);},[canClaim,connected,isHost,host?.participant_id,action]);
- useEffect(()=>{if(me?.capture_id&&localRef.current?.captureId!==me.capture_id){setUploadError('');}},[me?.capture_id]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearTimeout(flashTimer.current);
+      if (localRef.current?.url) URL.revokeObjectURL(localRef.current.url);
+    };
+  }, []);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    if (room?.result_id)
+      navigate(`/photo/${room.result_id}?together=1`, { replace: true });
+    if (room?.status === "ended") camera.stop();
+  }, [room?.result_id, room?.status, navigate, camera.stop]);
+  useEffect(() => {
+    if (!settingsOpen && room)
+      setSettings({
+        layout: room.layout,
+        frame: room.frame,
+        photoCount: room.photo_count,
+        maxParticipants: room.max_participants,
+        countdownSeconds: room.countdown_seconds,
+        autoContinue: room.auto_continue,
+      });
+  }, [
+    room?.layout,
+    room?.frame,
+    room?.photo_count,
+    room?.countdown_seconds,
+    room?.auto_continue,
+    settingsOpen,
+  ]);
+  useEffect(() => {
+    if (!canClaim || !connected || isHost) return;
+    const timer = setTimeout(() => action("claim-host").catch(() => {}), 500);
+    return () => clearTimeout(timer);
+  }, [canClaim, connected, isHost, host?.participant_id, action]);
+  useEffect(() => {
+    if (me?.capture_id && localRef.current?.captureId !== me.capture_id) {
+      setUploadError("");
+    }
+  }, [me?.capture_id]);
 
- async function command(type,payload={}){if(busy)return;setBusy(true);try{return await action(type,payload);}catch(e){notify(e.message);}finally{if(mounted.current)setBusy(false);}}
- async function transmit(photo){setUploading(true);setUploadError('');try{await uploadPhoto(photo.blob,{round:photo.round,captureId:photo.captureId,capturedAt:photo.capturedAt});}catch(e){if(mounted.current)setUploadError(e.message);}finally{if(mounted.current)setUploading(false);}}
- async function capture({captureId,capturedAt}){
-  if(!camera.enabled||camera.status!=='ready')throw new Error('Turn your camera on and retake this photo.');
-  const video=camera.videoRef.current;if(!video?.videoWidth||video.readyState<2)throw new Error('Your camera was not ready. Please retake this photo.');
-  const canvas=document.createElement('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;canvas.getContext('2d').drawImage(video,0,0);
-  const blob=await canvasBlob(canvas,'image/jpeg');const photo={blob,captureId,capturedAt,round:room.current_round,url:URL.createObjectURL(blob)};
-  if(!mounted.current){URL.revokeObjectURL(photo.url);return;}
-  if(localRef.current?.url)URL.revokeObjectURL(localRef.current.url);localRef.current=photo;setLocalPhoto(photo);setFlash(true);flashTimer.current=setTimeout(()=>mounted.current&&setFlash(false),180);
-  if(sound){try{const context=new AudioContext(),osc=context.createOscillator(),gain=context.createGain();osc.connect(gain);gain.connect(context.destination);gain.gain.value=.06;osc.frequency.value=700;osc.start();osc.stop(context.currentTime+.07);osc.onended=()=>context.close();}catch{}}
-  await action('captured',{round:room.current_round,captureId}).catch(()=>{});await transmit(photo);
- }
+  async function command(type, payload = {}) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      return await action(type, payload);
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
+  async function transmit(photo) {
+    setUploading(true);
+    setUploadError("");
+    try {
+      await uploadPhoto(photo.blob, {
+        round: photo.round,
+        captureId: photo.captureId,
+        capturedAt: photo.capturedAt,
+      });
+    } catch (e) {
+      if (mounted.current) setUploadError(e.message);
+    } finally {
+      if (mounted.current) setUploading(false);
+    }
+  }
+  async function capture({ captureId, capturedAt }) {
+    if (!camera.enabled || camera.status !== "ready")
+      throw new Error("Turn your camera on and retake this photo.");
+    const video = camera.videoRef.current;
+    if (!video?.videoWidth || video.readyState < 2)
+      throw new Error("Your camera was not ready. Please retake this photo.");
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    const blob = await canvasBlob(canvas, "image/jpeg");
+    const photo = {
+      blob,
+      captureId,
+      capturedAt,
+      round: room.current_round,
+      url: URL.createObjectURL(blob),
+    };
+    if (!mounted.current) {
+      URL.revokeObjectURL(photo.url);
+      return;
+    }
+    if (localRef.current?.url) URL.revokeObjectURL(localRef.current.url);
+    localRef.current = photo;
+    setLocalPhoto(photo);
+    setFlash(true);
+    flashTimer.current = setTimeout(
+      () => mounted.current && setFlash(false),
+      180,
+    );
+    if (sound) {
+      try {
+        const context = new AudioContext(),
+          osc = context.createOscillator(),
+          gain = context.createGain();
+        osc.connect(gain);
+        gain.connect(context.destination);
+        gain.gain.value = 0.06;
+        osc.frequency.value = 700;
+        osc.start();
+        osc.stop(context.currentTime + 0.07);
+        osc.onended = () => context.close();
+      } catch {}
+    }
+    await action("captured", { round: room.current_round, captureId }).catch(
+      () => {},
+    );
+    await transmit(photo);
+  }
 
- const allMediaReady=room?.roster?.length>=2&&Array.from({length:room.photo_count},(_,i)=>i+1).every(round=>room.roster.every(pid=>media.photos.some(p=>p.participant_id===pid&&p.round===round&&p.approved&&p.src)));
- const generationInput=useRef(null);generationInput.current={layout,frame,photos:getRemotePhotos(layout,media.photos.filter(p=>p.approved)),settings:finalSettings};
- useEffect(()=>{
-  if(room?.status!=='generating'||!isHost||!allMediaReady||!connected)return;
-  const key=`${room.id}:${room.current_round}:${generationRetry}`;if(generationKey.current===key)return;generationKey.current=key;setGenerating(true);setGenerationError('');
-  (async()=>{try{const canvas=await generateCanvas(generationInput.current);let blob=await canvasBlob(canvas);if(blob.size>10*1024*1024)blob=await canvasBlob(canvas,'image/jpeg');if(blob.size>10*1024*1024)throw new Error('The final image is too large to save. Please try a more compact layout.');await saveResult(blob,{sessionId:sessionId()});}catch(e){if(mounted.current)setGenerationError(e.message);}finally{if(mounted.current)setGenerating(false);}})();
- },[room?.status,room?.id,room?.current_round,isHost,allMediaReady,connected,generationRetry,saveResult]);
+  const allMediaReady =
+    room?.roster?.length >= 2 &&
+    Array.from({ length: room.photo_count }, (_, i) => i + 1).every((round) =>
+      room.roster.every((pid) =>
+        media.photos.some(
+          (p) =>
+            p.participant_id === pid &&
+            p.round === round &&
+            p.approved &&
+            p.src,
+        ),
+      ),
+    );
+  const generationInput = useRef(null);
+  generationInput.current = {
+    layout,
+    frame,
+    photos: getRemotePhotos(
+      layout,
+      media.photos.filter((p) => p.approved),
+    ),
+    settings: finalSettings,
+  };
+  useEffect(() => {
+    if (
+      room?.status !== "generating" ||
+      !isHost ||
+      !allMediaReady ||
+      !connected
+    )
+      return;
+    const key = `${room.id}:${room.current_round}:${generationRetry}`;
+    if (generationKey.current === key) return;
+    generationKey.current = key;
+    setGenerating(true);
+    setGenerationError("");
+    (async () => {
+      try {
+        const canvas = await generateCanvas(generationInput.current);
+        let blob = await canvasBlob(canvas);
+        if (blob.size > 10 * 1024 * 1024)
+          blob = await canvasBlob(canvas, "image/jpeg");
+        if (blob.size > 10 * 1024 * 1024)
+          throw new Error(
+            "The final image is too large to save. Please try a more compact layout.",
+          );
+        await saveResult(blob, { sessionId: sessionId() });
+      } catch (e) {
+        if (mounted.current) setGenerationError(e.message);
+      } finally {
+        if (mounted.current) setGenerating(false);
+      }
+    })();
+  }, [
+    room?.status,
+    room?.id,
+    room?.current_round,
+    isHost,
+    allMediaReady,
+    connected,
+    generationRetry,
+    saveResult,
+  ]);
 
- if(loading&&!room)return <main className="section"><div className="loading"><span className="spinner"/>Opening your room...</div></main>;
- if(!room)return <main className="section"><div className="empty-state"><h1>We couldn’t open this room.</h1><p role="alert">{error||'Join the room again to reconnect.'}</p><button className="button" onClick={()=>refresh().catch(e=>notify(e.message))}>Try reconnecting</button><Link className="text-link" to="/together">Back to Booth Together</Link></div></main>;
- if(room.status==='ended'||!me||!liveMember(me))return <main className="section"><div className="empty-state"><h1>This room has closed.</h1><p>Thank you for sharing a little moment.</p><Link to="/together" className="button">Create another room</Link></div></main>;
- const inviteUrl=connection.inviteUrl||`${location.origin}/room/${code}`;
- return <main className="section live-room"><video ref={camera.videoRef} className="local-capture-source" autoPlay muted playsInline aria-hidden="true"/><div className="room-heading"><div><span className="eyebrow">PITIK BOOTH · TOGETHER</span><h1>{lobby?'Your people. In the moment.':room.status==='generating'?'Putting your memories together.':`Photo ${room.current_round} of ${room.photo_count}`}</h1><p><span className={`connection-dot ${connected?'online':''}`}/>{connected?'Room connected':'Reconnecting to your room…'} <span>·</span> Room <strong>{code}</strong> <span>·</span> {visible.length}/{room.max_participants} friends</p></div><div className="room-invite-actions"><button className="button secondary" onClick={()=>navigator.clipboard.writeText(inviteUrl).then(()=>notify('Invite link copied!')).catch(()=>setQr(true))}><Copy size={16}/> Copy invite</button><button className="icon-button" aria-label="Show room QR code" onClick={()=>setQr(true)}><QrCode/></button><button className="icon-button" aria-label="Leave room" onClick={async()=>{try{await leave();camera.stop();navigate('/together');}catch(e){notify(e.message);}}}><LogOut/></button></div></div>
- {(error||camera.error||clock.error||rtc.error)&&<div className="room-notice" role="status">{error||camera.error||clock.error||rtc.error}{camera.error&&<button className="text-link" onClick={()=>camera.open()}>Try camera again</button>}</div>}
- {hostStale&&!isHost&&<div className="room-notice">Host disconnected. Waiting for them to reconnect… {canClaim&&<button className="text-link" onClick={()=>command('claim-host')}>Continue with a new host</button>}</div>}
- <div className="live-room-columns"><div className="live-room-main"><div className="remote-cameras"><ParticipantGrid participants={visible} participantId={id} localStream={camera.stream} remoteStreams={rtc.remoteStreams} peerStates={rtc.peerStates} mirror={camera.mirror} onReconnect={rtc.reconnect}/>{captureState.phase==='countdown'&&<div className="remote-countdown" aria-live="assertive"><small>PHOTO {room.current_round} OF {room.photo_count}</small><strong>{captureState.remaining}</strong><span>Stay right here. A memory is on its way.</span></div>}{flash&&<div className="camera-flash"/>}</div><div className="remote-camera-controls"><button className="button secondary" onClick={camera.toggleCamera} disabled={uploading||captureState.phase==='countdown'}>{camera.enabled?<Camera size={16}/>:<VideoOff size={16}/>} Camera {camera.enabled?'on':'off'}</button><button className="button secondary" onClick={camera.switchCamera} disabled={uploading||captureState.phase==='countdown'}><SwitchCamera size={16}/> Switch camera</button><label className="inline-check"><input type="checkbox" checked={camera.mirror} onChange={e=>camera.setMirror(e.target.checked)}/> Mirror preview</label><button className="icon-button" aria-label={sound?'Turn shutter sound off':'Turn shutter sound on'} onClick={()=>setSound(!sound)}>{sound?<Volume2 size={20}/>:<VolumeX size={20}/>}</button></div>
- {captureState.error&&<div className="room-error" role="alert">{captureState.error}<button className="button secondary" disabled={!camera.enabled||busy} onClick={()=>command('retake',{participantId:id})}>Retake my photo</button></div>}
- {lobby?<section className="room-ready-panel"><div><h2>{readyCount===visible.length&&visible.length>=2?'Everyone’s ready.':'A little check before the click.'}</h2><p>{visible.length<2?'Invite a friend to start your shared photobooth.':`Ready: ${readyCount} of ${visible.length}. Each friend needs their camera on.`}</p></div><button className={`button ${me.ready?'secondary':''}`} disabled={!connected||!camera.enabled||camera.status!=='ready'||!clock.synced||busy} onClick={()=>command('ready',{ready:!me.ready,cameraEnabled:camera.enabled})}>{me.ready?<><Check size={18}/> I’m ready · undo</>:"I’m ready"}</button>{isHost&&<button className="button" disabled={!canStart||busy} onClick={async()=>{if(room.layout!==layout.id){const result=await command('configure',{layout:layout.id});if(!result)return;}await command('start');}}>Start Booth <ArrowRight size={16}/></button>}{visible.length>=2&&!peersConnected&&<p className="help-text">Waiting for the live cameras to connect before starting.</p>}</section>:<><div className="round-status"><h3>{room.status==='round_complete'?'Everyone approved this round!':room.status==='generating'?'All photos approved. Creating one shared image…':'Your round, together.'}</h3><div>{(room.roster||[]).map(pid=>{const p=participants.find(p=>p.participant_id===pid);const ph=photos.find(x=>x.participant_id===pid&&x.round===room.current_round);return <span key={pid} className={ph?.approved?'status-ready':''}>{ph?.approved?'✓':ph?'◉':'○'} {p?.display_name||'Friend'} <small>{ph?.approved?'Approved':ph?'Reviewing':p?.status||'Waiting'}</small></span>;})}</div></div>{(localCurrent||ownPhoto)&&!['countdown','retaking'].includes(me.status)&&<RemotePhotoReview photo={ownPhoto} localPhoto={localCurrent} uploading={uploading} uploadError={uploadError} approved={ownRoundApproved} onRetry={()=>localCurrent&&transmit(localCurrent)} onRetake={()=>command('retake',{participantId:id})} onAccept={()=>command('accept',{round:room.current_round,captureId:me.capture_id})} disabled={busy||!connected||room.status==='generating'||!camera.enabled}/>}<div className="remote-round-actions">{isHost&&room.status==='round_complete'&&<button className="button" disabled={busy||!connected} onClick={()=>command('next')}>Start next photo <ArrowRight size={16}/></button>}{isHost&&!['generating','completed'].includes(room.status)&&<button className="button secondary" disabled={busy||!connected} onClick={()=>command('retake',{all:true})}><RotateCcw size={15}/> Retake everyone</button>}{!isHost&&room.status==='round_complete'&&<p>Waiting for the host to start the next photo.</p>}</div></>}
- {room.status==='generating'&&<div className="room-generation"><h2>{isHost?'Making your shared masterpiece.':'Your host is making the final photobooth.'}</h2>{generating?<p><span className="spinner"/> Generating and saving your memory...</p>:generationError?<><p className="room-error" role="alert">{generationError}</p><button className="button" onClick={()=>setGenerationRetry(n=>n+1)}>Retry final image</button></>:<p>{allMediaReady?'Everyone will receive the same photo.':'Loading everyone’s approved photos…'}</p>}</div>}
- <div className="room-presence-notices" aria-live="polite">{presence.notices?.slice(-2).map((notice,i)=><p key={notice.id||i}>{typeof notice==='string'?notice:notice.message}</p>)}</div>
- {isHost&&visible.some(p=>p.participant_id!==id&&(p.status==='disconnected'||now-Date.parse(p.last_seen_at)>30000))&&<section className="room-disconnections"><h3>Giving your friends time to reconnect.</h3>{visible.filter(p=>p.participant_id!==id&&(p.status==='disconnected'||now-Date.parse(p.last_seen_at)>30000)).map(p=><div key={p.participant_id}><span>{p.display_name} is reconnecting…</span>{now-Date.parse(p.last_seen_at)>60000?<button className="button secondary" disabled={busy} onClick={()=>command('remove',{participantId:p.participant_id})}>Continue without {p.display_name}</button>:<span className="help-text">Waiting up to 60 seconds</span>}</div>)}</section>}
- </div><aside className="preview-sidebar remote-preview"><span className="eyebrow">YOUR MEMORIES, COMING TOGETHER</span><div className="preview-stage"><LayoutPreview layout={layout} frame={frame} photos={renderedPhotos} settings={finalSettings}/></div><h3>{layout.name}</h3><p>{frame.name} · {room.photo_count} photos each<br/>{photos.filter(p=>p.approved).length} approved photos</p>{media.error&&<p className="room-error">{media.error}<button className="text-link" onClick={media.retry}>Retry loading photos</button></p>}{isHost&&lobby&&<button className="button secondary" onClick={()=>setSettingsOpen(v=>!v)}>{settingsOpen?'Close settings':'Change layout & frame'}</button>}{isHost&&<button className="text-link end-room-link" onClick={()=>setConfirmEnd(true)}>End room</button>}<small>Audio off. Live video is never recorded.</small></aside></div>
- {settingsOpen&&isHost&&lobby&&settings&&<section className="room-configuration"><h2>A frame for your people.</h2><RoomSettings value={settings} onChange={setSettings} participantCount={visible.length>=2?visible.length:room.max_participants} disabled={busy}/><button className="button" disabled={busy} onClick={async()=>{const result=await command('configure',settings);if(result)setSettingsOpen(false);}}>Save room settings</button><p className="help-text">Everyone will need to confirm they’re ready after a change.</p></section>}
- {qr&&<QRCodeModal url={inviteUrl} onClose={()=>setQr(false)}/>}{confirmEnd&&<div className="modal-backdrop"><div className="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="end-room-title"><h2 id="end-room-title">End this room?</h2><p>This closes the live booth for everyone. Finished shared photos remain available.</p><div className="download-buttons"><button className="button secondary" onClick={()=>setConfirmEnd(false)}>Keep the room open</button><button className="button danger" disabled={busy} onClick={async()=>{await command('end');setConfirmEnd(false);}}>End room</button></div></div></div>}
- </main>;
+  if (loading && !room)
+    return (
+      <main className="section">
+        <div className="loading">
+          <span className="spinner" />
+          Opening your room...
+        </div>
+      </main>
+    );
+  if (!room)
+    return (
+      <main className="section">
+        <div className="empty-state">
+          <h1>We couldn’t open this room.</h1>
+          <p role="alert">{error || "Join the room again to reconnect."}</p>
+          <button
+            className="button"
+            onClick={() => refresh().catch((e) => notify(e.message))}
+          >
+            Try reconnecting
+          </button>
+          <Link className="text-link" to="/together">
+            Back to Booth Together
+          </Link>
+        </div>
+      </main>
+    );
+  if (room.status === "ended" || !me || !liveMember(me))
+    return (
+      <main className="section">
+        <div className="empty-state">
+          <h1>This room has closed.</h1>
+          <p>Thank you for sharing a little moment.</p>
+          <Link to="/together" className="button">
+            Create another room
+          </Link>
+        </div>
+      </main>
+    );
+  const inviteUrl = connection.inviteUrl || `${location.origin}/room/${code}`;
+  return (
+    <main className="section live-room">
+      <video
+        ref={camera.videoRef}
+        className="local-capture-source"
+        autoPlay
+        muted
+        playsInline
+        aria-hidden="true"
+      />
+      <div className="room-heading">
+        <div>
+          <span className="eyebrow">PITIK BOOTH · TOGETHER</span>
+          <h1>
+            {lobby
+              ? "Your people. In the moment."
+              : room.status === "generating"
+                ? "Putting your memories together."
+                : `Photo ${room.current_round} of ${room.photo_count}`}
+          </h1>
+          <p>
+            <span className={`connection-dot ${connected ? "online" : ""}`} />
+            {connected ? "Room connected" : "Reconnecting to your room…"}{" "}
+            <span>·</span> Room <strong>{code}</strong> <span>·</span>{" "}
+            {visible.length}/{room.max_participants} friends
+          </p>
+        </div>
+        <div className="room-invite-actions">
+          <button
+            className="button secondary"
+            onClick={() =>
+              navigator.clipboard
+                .writeText(inviteUrl)
+                .then(() => notify("Invite link copied!"))
+                .catch(() => setQr(true))
+            }
+          >
+            <Copy size={16} /> Copy invite
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Show room QR code"
+            onClick={() => setQr(true)}
+          >
+            <QrCode />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Leave room"
+            onClick={async () => {
+              try {
+                await leave();
+                camera.stop();
+                navigate("/together");
+              } catch (e) {
+                notify(e.message);
+              }
+            }}
+          >
+            <LogOut />
+          </button>
+        </div>
+      </div>
+      {(error || camera.error || clock.error || rtc.error) && (
+        <div className="room-notice" role="status">
+          {error || camera.error || clock.error || rtc.error}
+          {camera.error && (
+            <button className="text-link" onClick={() => camera.open()}>
+              Try camera again
+            </button>
+          )}
+        </div>
+      )}
+      {hostStale && !isHost && (
+        <div className="room-notice">
+          Host disconnected. Waiting for them to reconnect…{" "}
+          {canClaim && (
+            <button className="text-link" onClick={() => command("claim-host")}>
+              Continue with a new host
+            </button>
+          )}
+        </div>
+      )}
+      <div className="live-room-columns">
+        <div className="live-room-main">
+          <div className="remote-cameras">
+            <ParticipantGrid
+              participants={visible}
+              participantId={id}
+              localStream={camera.stream}
+              remoteStreams={rtc.remoteStreams}
+              peerStates={rtc.peerStates}
+              mirror={camera.mirror}
+              onReconnect={rtc.reconnect}
+              layout={layout}
+              frame={frame}
+              round={room.current_round || 1}
+            />
+            {captureState.phase === "countdown" && (
+              <div className="remote-countdown" aria-live="assertive">
+                <small>
+                  PHOTO {room.current_round} OF {room.photo_count}
+                </small>
+                <strong>{captureState.remaining}</strong>
+                <span>Stay right here. A memory is on its way.</span>
+              </div>
+            )}
+            {flash && <div className="camera-flash" />}
+          </div>
+          <div className="remote-camera-controls">
+            <button
+              className="button secondary"
+              onClick={camera.toggleCamera}
+              disabled={uploading || captureState.phase === "countdown"}
+            >
+              {camera.enabled ? <Camera size={16} /> : <VideoOff size={16} />}{" "}
+              Camera {camera.enabled ? "on" : "off"}
+            </button>
+            <button
+              className="button secondary"
+              onClick={camera.switchCamera}
+              disabled={uploading || captureState.phase === "countdown"}
+            >
+              <SwitchCamera size={16} /> Switch camera
+            </button>
+            <label className="inline-check">
+              <input
+                type="checkbox"
+                checked={camera.mirror}
+                onChange={(e) => camera.setMirror(e.target.checked)}
+              />{" "}
+              Mirror preview
+            </label>
+            <button
+              className="icon-button"
+              aria-label={
+                sound ? "Turn shutter sound off" : "Turn shutter sound on"
+              }
+              onClick={() => setSound(!sound)}
+            >
+              {sound ? <Volume2 size={20} /> : <VolumeX size={20} />}
+            </button>
+          </div>
+          {captureState.error && (
+            <div className="room-error" role="alert">
+              {captureState.error}
+              <button
+                className="button secondary"
+                disabled={!camera.enabled || busy}
+                onClick={() => command("retake", { participantId: id })}
+              >
+                Retake my photo
+              </button>
+            </div>
+          )}
+          {lobby ? (
+            <section className="room-ready-panel">
+              <div>
+                <h2>
+                  {readyCount === visible.length && visible.length >= 2
+                    ? "Everyone’s ready."
+                    : "A little check before the click."}
+                </h2>
+                <p>
+                  {visible.length < 2
+                    ? "Invite a friend to start your shared photobooth."
+                    : `Ready: ${readyCount} of ${visible.length}. Each friend needs their camera on.`}
+                </p>
+              </div>
+              <button
+                className={`button ${me.ready ? "secondary" : ""}`}
+                disabled={
+                  !connected ||
+                  !camera.enabled ||
+                  camera.status !== "ready" ||
+                  !clock.synced ||
+                  busy
+                }
+                onClick={() =>
+                  command("ready", {
+                    ready: !me.ready,
+                    cameraEnabled: camera.enabled,
+                  })
+                }
+              >
+                {me.ready ? (
+                  <>
+                    <Check size={18} /> I’m ready · undo
+                  </>
+                ) : (
+                  "I’m ready"
+                )}
+              </button>
+              {isHost && (
+                <button
+                  className="button"
+                  disabled={!canStart || busy}
+                  onClick={async () => {
+                    if (room.layout !== layout.id) {
+                      const result = await command("configure", {
+                        layout: layout.id,
+                      });
+                      if (!result) return;
+                    }
+                    await command("start");
+                  }}
+                >
+                  Start Booth <ArrowRight size={16} />
+                </button>
+              )}
+              {visible.length >= 2 && !peersConnected && (
+                <p className="help-text">
+                  Waiting for the live cameras to connect before starting.
+                </p>
+              )}
+            </section>
+          ) : (
+            <>
+              <div className="round-status">
+                <h3>
+                  {room.status === "round_complete"
+                    ? "Everyone approved this round!"
+                    : room.status === "generating"
+                      ? "All photos approved. Creating one shared image…"
+                      : "Your round, together."}
+                </h3>
+                <div>
+                  {(room.roster || []).map((pid) => {
+                    const p = participants.find(
+                      (p) => p.participant_id === pid,
+                    );
+                    const ph = photos.find(
+                      (x) =>
+                        x.participant_id === pid &&
+                        x.round === room.current_round,
+                    );
+                    return (
+                      <span
+                        key={pid}
+                        className={ph?.approved ? "status-ready" : ""}
+                      >
+                        {ph?.approved ? "✓" : ph ? "◉" : "○"}{" "}
+                        {p?.display_name || "Friend"}{" "}
+                        <small>
+                          {ph?.approved
+                            ? "Approved"
+                            : ph
+                              ? "Reviewing"
+                              : p?.status || "Waiting"}
+                        </small>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              {(localCurrent || ownPhoto) &&
+                !["countdown", "retaking"].includes(me.status) && (
+                  <RemotePhotoReview
+                    photo={ownPhoto}
+                    localPhoto={localCurrent}
+                    uploading={uploading}
+                    uploadError={uploadError}
+                    approved={ownRoundApproved}
+                    onRetry={() => localCurrent && transmit(localCurrent)}
+                    onRetake={() => command("retake", { participantId: id })}
+                    onAccept={() =>
+                      command("accept", {
+                        round: room.current_round,
+                        captureId: me.capture_id,
+                      })
+                    }
+                    disabled={
+                      busy ||
+                      !connected ||
+                      room.status === "generating" ||
+                      !camera.enabled
+                    }
+                  />
+                )}
+              <div className="remote-round-actions">
+                {isHost && room.status === "round_complete" && (
+                  <button
+                    className="button"
+                    disabled={busy || !connected}
+                    onClick={() => command("next")}
+                  >
+                    Start next photo <ArrowRight size={16} />
+                  </button>
+                )}
+                {isHost &&
+                  !["generating", "completed"].includes(room.status) && (
+                    <button
+                      className="button secondary"
+                      disabled={busy || !connected}
+                      onClick={() => command("retake", { all: true })}
+                    >
+                      <RotateCcw size={15} /> Retake everyone
+                    </button>
+                  )}
+                {!isHost && room.status === "round_complete" && (
+                  <p>Waiting for the host to start the next photo.</p>
+                )}
+              </div>
+            </>
+          )}
+          {room.status === "generating" && (
+            <div className="room-generation">
+              <h2>
+                {isHost
+                  ? "Making your shared masterpiece."
+                  : "Your host is making the final photobooth."}
+              </h2>
+              {generating ? (
+                <p>
+                  <span className="spinner" /> Generating and saving your
+                  memory...
+                </p>
+              ) : generationError ? (
+                <>
+                  <p className="room-error" role="alert">
+                    {generationError}
+                  </p>
+                  <button
+                    className="button"
+                    onClick={() => setGenerationRetry((n) => n + 1)}
+                  >
+                    Retry final image
+                  </button>
+                </>
+              ) : (
+                <p>
+                  {allMediaReady
+                    ? "Everyone will receive the same photo."
+                    : "Loading everyone’s approved photos…"}
+                </p>
+              )}
+            </div>
+          )}
+          <div className="room-presence-notices" aria-live="polite">
+            {presence.notices?.slice(-2).map((notice, i) => (
+              <p key={notice.id || i}>
+                {typeof notice === "string" ? notice : notice.message}
+              </p>
+            ))}
+          </div>
+          {isHost &&
+            visible.some(
+              (p) =>
+                p.participant_id !== id &&
+                (p.status === "disconnected" ||
+                  now - Date.parse(p.last_seen_at) > 30000),
+            ) && (
+              <section className="room-disconnections">
+                <h3>Giving your friends time to reconnect.</h3>
+                {visible
+                  .filter(
+                    (p) =>
+                      p.participant_id !== id &&
+                      (p.status === "disconnected" ||
+                        now - Date.parse(p.last_seen_at) > 30000),
+                  )
+                  .map((p) => (
+                    <div key={p.participant_id}>
+                      <span>{p.display_name} is reconnecting…</span>
+                      {now - Date.parse(p.last_seen_at) > 60000 ? (
+                        <button
+                          className="button secondary"
+                          disabled={busy}
+                          onClick={() =>
+                            command("remove", {
+                              participantId: p.participant_id,
+                            })
+                          }
+                        >
+                          Continue without {p.display_name}
+                        </button>
+                      ) : (
+                        <span className="help-text">
+                          Waiting up to 60 seconds
+                        </span>
+                      )}
+                    </div>
+                  ))}
+              </section>
+            )}
+        </div>
+        <aside className="preview-sidebar remote-preview">
+          <span className="eyebrow">YOUR MEMORIES, COMING TOGETHER</span>
+          <div className="preview-stage">
+            <LayoutPreview
+              layout={layout}
+              frame={frame}
+              photos={renderedPhotos}
+              settings={finalSettings}
+            />
+          </div>
+          <h3>{layout.name}</h3>
+          <p>
+            {frame.name} · {room.photo_count} photos each
+            <br />
+            {photos.filter((p) => p.approved).length} approved photos
+          </p>
+          {media.error && (
+            <p className="room-error">
+              {media.error}
+              <button className="text-link" onClick={media.retry}>
+                Retry loading photos
+              </button>
+            </p>
+          )}
+          {isHost && lobby && (
+            <button
+              className="button secondary"
+              onClick={() => setSettingsOpen((v) => !v)}
+            >
+              {settingsOpen ? "Close settings" : "Change layout & frame"}
+            </button>
+          )}
+          {isHost && (
+            <button
+              className="text-link end-room-link"
+              onClick={() => setConfirmEnd(true)}
+            >
+              End room
+            </button>
+          )}
+          <small>Audio off. Live video is never recorded.</small>
+        </aside>
+      </div>
+      {settingsOpen && isHost && lobby && settings && (
+        <section className="room-configuration">
+          <h2>A frame for your people.</h2>
+          <RoomSettings
+            value={settings}
+            onChange={setSettings}
+            participantCount={
+              visible.length >= 2 ? visible.length : room.max_participants
+            }
+            disabled={busy}
+          />
+          <button
+            className="button"
+            disabled={busy}
+            onClick={async () => {
+              const result = await command("configure", settings);
+              if (result) setSettingsOpen(false);
+            }}
+          >
+            Save room settings
+          </button>
+          <p className="help-text">
+            Everyone will need to confirm they’re ready after a change.
+          </p>
+        </section>
+      )}
+      {qr && <QRCodeModal url={inviteUrl} onClose={() => setQr(false)} />}
+      {confirmEnd && (
+        <div className="modal-backdrop">
+          <div
+            className="confirm-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="end-room-title"
+          >
+            <h2 id="end-room-title">End this room?</h2>
+            <p>
+              This closes the live booth for everyone. Finished shared photos
+              remain available.
+            </p>
+            <div className="download-buttons">
+              <button
+                className="button secondary"
+                onClick={() => setConfirmEnd(false)}
+              >
+                Keep the room open
+              </button>
+              <button
+                className="button danger"
+                disabled={busy}
+                onClick={async () => {
+                  await command("end");
+                  setConfirmEnd(false);
+                }}
+              >
+                End room
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
 }
