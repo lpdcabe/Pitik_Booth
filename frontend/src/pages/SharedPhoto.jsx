@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Download, Share2, QrCode } from "lucide-react";
-import { api, imageURL, downloadURL } from "../services/api";
+import { api, imageURL } from "../services/api";
+import { downloadPhoto } from "../utils/downloadPhoto";
 import { useBooth } from "../context/PhotoboothContext";
 import QRCodeModal from "../components/QRCodeModal";
 export default function SharedPhoto() {
@@ -9,7 +10,8 @@ export default function SharedPhoto() {
     { notify } = useBooth();
   const [photo, setPhoto] = useState(null),
     [error, setError] = useState(""),
-    [qr, setQr] = useState(false);
+    [qr, setQr] = useState(false),
+    [downloading, setDownloading] = useState("");
   useEffect(() => {
     let active = true;
     setPhoto(null);
@@ -35,6 +37,16 @@ export default function SharedPhoto() {
       }
     } catch (e) {
       if (e.name !== "AbortError") setQr(true);
+    }
+  }
+  async function download(format) {
+    setDownloading(format);
+    try {
+      await downloadPhoto(imageURL(photo), format);
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setDownloading("");
     }
   }
   return (
@@ -72,11 +84,17 @@ export default function SharedPhoto() {
           <div className="shared-actions">
             <button
               className="button"
-              onClick={() =>
-                downloadURL(imageURL(photo)).catch((e) => notify(e.message))
-              }
+              disabled={!!downloading}
+              onClick={() => download("png")}
             >
-              <Download size={18} /> Download
+              <Download size={18} /> {downloading === "png" ? "Preparing PNG..." : "Download PNG"}
+            </button>
+            <button
+              className="button secondary"
+              disabled={!!downloading}
+              onClick={() => download("jpg")}
+            >
+              <Download size={18} /> {downloading === "jpg" ? "Preparing JPG..." : "Download JPG"}
             </button>
             <button className="button secondary" onClick={share}>
               <Share2 size={18} /> Share
@@ -85,8 +103,8 @@ export default function SharedPhoto() {
               <QrCode size={18} /> QR code
             </button>
           </div>
-          <Link to="/setup" className="text-link">
-            Make your own little moment →
+          <Link to={photo.layout?.startsWith("remote-") ? "/together" : "/setup"} className="text-link">
+            {photo.layout?.startsWith("remote-") ? "Create another Booth Together" : "Make your own little moment →"}
           </Link>
         </>
       )}

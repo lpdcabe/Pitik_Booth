@@ -8,6 +8,10 @@ import EditPhotos from "./pages/EditPhotos";
 import Result from "./pages/Result";
 import Gallery from "./pages/Gallery";
 import SharedPhoto from "./pages/SharedPhoto";
+import BoothTogether from './pages/BoothTogether';
+import CreateRoom from './pages/CreateRoom';
+import JoinRoom from './pages/JoinRoom';
+import Room from './pages/Room';
 export default function App() {
   const { pathname } = useLocation();
   useEffect(() => {
@@ -29,6 +33,10 @@ export default function App() {
           <Route path="/result" element={<Result />} />
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/photo/:id" element={<SharedPhoto />} />
+          <Route path="/together" element={<BoothTogether />} />
+          <Route path="/together/create" element={<CreateRoom />} />
+          <Route path="/together/join" element={<JoinRoom />} />
+          <Route path="/room/:roomCode" element={<Room />} />
           <Route
             path="*"
             element={

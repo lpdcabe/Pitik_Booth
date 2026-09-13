@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import routes from "./routes/photobooths.js";
 import { supabase } from "./services/supabase.js";
+import roomRoutes from './routes/rooms.js';
 export const app = express();
 // Render terminates HTTPS at its reverse proxy; trust only the closest hop.
 if (process.env.RENDER === "true") app.set("trust proxy", 1);
@@ -30,7 +31,7 @@ app.use(
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:5173",
-    allowedHeaders: ["Content-Type", "X-Session-Id"],
+    allowedHeaders: ["Content-Type", "X-Session-Id", "Authorization", "X-Participant-Id", "X-Host-Token"],
   }),
 );
 app.use(
@@ -40,12 +41,15 @@ app.use(
     limit: 120,
     standardHeaders: "draft-7",
     legacyHeaders: false,
+    skip: (req) => req.path === '/rooms' || req.path.startsWith('/rooms/'),
   }),
 );
 app.get("/api/health", (req, res) =>
   res.json({ ok: true, storageConfigured: !!supabase }),
 );
 app.use("/api/photobooths", routes);
+app.get('/api/time', (req,res) => res.set('Cache-Control','no-store').json({serverTime:Date.now()}));
+app.use('/api/rooms', roomRoutes);
 app.use("/api", (req, res) =>
   res.status(404).json({ error: "API endpoint not found." }),
 );

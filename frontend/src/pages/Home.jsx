@@ -32,9 +32,9 @@ export default function Home() {
               Come as you are. Strike a pose. Turn your everyday
               <br className="desktop" /> moments into something worth keeping.
             </p>
-            <Link to="/setup" className="button hero-cta">
-              Start photobooth <ArrowUpRight size={20} />
-            </Link>
+            <div className="booth-mode-buttons"><Link to="/setup" className="button hero-cta" aria-label="Start photobooth">
+              Solo Booth <ArrowUpRight size={20} />
+            </Link><Link to="/together" className="button secondary hero-cta">Booth Together <ArrowUpRight size={20}/></Link></div>
             <div className="hero-promises">
               <span>
                 <Check size={14} /> Free to create

@@ -38,7 +38,7 @@ Open https://vercel.com/new and import the same repository.
 - Add `VITE_API_URL` with the actual Render origin, e.g. `https://YOUR-RENDER-HOST.onrender.com`. Do not append `/api` or a trailing slash.
 - Deploy. Copy the actual production URL assigned by Vercel.
 
-Only `VITE_API_URL` belongs in Vercel. Supabase credentials stay on Render. The SPA rewrite keeps `/gallery`, `/setup`, and `/photo/:id` working when opened directly.
+For Booth Together, also add `VITE_STUN_URL` and production TURN settings `VITE_TURN_URL`, `VITE_TURN_USERNAME`, and `VITE_TURN_CREDENTIAL`. See [BOOTH_TOGETHER.md](BOOTH_TOGETHER.md) for relay setup and credential visibility: every `VITE_` value is public in the built frontend. Supabase credentials stay on Render. The SPA rewrite keeps `/gallery`, `/setup`, `/together`, `/room/:roomCode`, and `/photo/:id` working when opened directly.
 
 ## 3. Connect the production origins
 
@@ -55,6 +55,18 @@ If you change `VITE_API_URL` in Vercel, redeploy the frontend: Vite embeds it at
 5. Refresh the shared page directly to verify the SPA rewrite.
 6. Delete the test image from the original browser session and confirm its shared URL no longer serves the image.
 
-The free backend may need time to wake after inactivity. Expired photos are blocked by the API; physical cleanup still requires scheduling `npm run cleanup -w backend` on an environment with the backend credentials.
+The free backend may need time to wake after inactivity. Expired photos and rooms are blocked by the API; physical cleanup still requires scheduling `npm run cleanup -w backend` on an environment with the backend credentials.
+
+## 5. Enable Booth Together
+
+1. Run `supabase/booth-together.sql` in the existing project's SQL Editor after the original `supabase/migration.sql`. This adds room tables, transactional commands, and the private `room-photos` bucket.
+2. Enable Supabase Realtime. The backend uses **private** Broadcast and Presence channels with its server credential. This implementation requires no frontend Supabase key, login, anonymous Realtime policy, or public room table access.
+3. Redeploy Render and Vercel with the updated source and ICE variables. Keep the existing repository-root build and start commands.
+4. Keep the room events endpoint `/api/rooms/:roomCode/events` directly on Render. It is a streaming SSE response, relayed from Supabase Realtime, with bearer credentials in headers. Do not buffer/cache it through a proxy or move it into a short-lived frontend function.
+5. Verify `FRONTEND_URL` again. The CORS configuration must allow `Authorization`, `X-Participant-Id`, `X-Host-Token`, `Content-Type`, and `X-Session-Id` from the configured frontend origin.
+6. Open two independent browser profiles, create a room, join through its invite, and confirm live camera feeds and pushed ready states. Complete a full session and verify both browsers receive the same `/photo/:id`.
+7. Test on two real devices using separate networks, with a working TURN relay. Verify captures, individual/all retakes, reconnect, host recovery, PNG/JPG download, and QR sharing. A successful build or local fake-camera test does not verify this production scenario.
+
+Rooms expire after two hours; final saved photos retain their existing retention setting. Schedule the cleanup command above to remove expired private room stills and records. Full configuration, API notes, and troubleshooting are in [BOOTH_TOGETHER.md](BOOTH_TOGETHER.md).
 
 References: [Render Blueprint configuration](https://render.com/docs/blueprint-spec), [Vite on Vercel](https://vercel.com/docs/frameworks/frontend/vite).

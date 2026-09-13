@@ -95,12 +95,11 @@ export async function generateCanvas(
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
   }
-  const images = await Promise.all(
-    photos.map((p) => (p ? loadImage(p.src) : null)),
-  );
   for (const [i, s] of resolveSlots(layout, settings).entries()) {
     const p = photos[s.photoIndex ?? i],
-      img = images[s.photoIndex ?? i];
+      // Decode only the photo being drawn. A four-person, nine-round room
+      // should not retain 36 full-resolution decoded camera images at once.
+      img = p ? await loadImage(p.src) : null;
     ctx.save();
     ctx.translate(s.x + s.width / 2, s.y + s.height / 2);
     ctx.rotate((s.rotation * Math.PI) / 180);
@@ -140,6 +139,11 @@ export async function generateCanvas(
         dw,
         dh,
       );
+      if (!canvasFilterSupported) {
+        // Safari's filter fallback uses a temporary full-size Canvas.
+        bitmap.width = 0;
+        bitmap.height = 0;
+      }
       ctx.filter = "none";
       const grain = p.adjustments?.grain || 0;
       if (grain) {
@@ -223,6 +227,7 @@ export async function generateCanvas(
       );
     }
     ctx.restore();
+    if (img) img.removeAttribute("src");
   }
   if (decoration === "film") {
     ctx.fillStyle = "#eee8d6";
