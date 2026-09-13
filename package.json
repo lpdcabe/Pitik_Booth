@@ -1,0 +1,25 @@
+{
+  "name": "little-moments-photobooth",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w frontend",
+    "start": "npm run start -w backend",
+    "test": "node --test tests/*.test.js",
+    "test:browser": "playwright test",
+    "source:bundle": "node scripts/export-source.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "concurrently": "^9.1.2",
+    "prettier": "^3.9.6"
+  },
+  "overrides": {
+    "qs": "6.16.0"
+  }
+}
