@@ -8,6 +8,8 @@ import { existsSync } from "node:fs";
 import routes from "./routes/photobooths.js";
 import { supabase } from "./services/supabase.js";
 export const app = express();
+// Render terminates HTTPS at its reverse proxy; trust only the closest hop.
+if (process.env.RENDER === "true") app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(
   helmet({
